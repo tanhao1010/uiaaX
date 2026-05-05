@@ -21,9 +21,10 @@ STABLE_SECONDS = 2.0
 RESET_AFTER_SECONDS = 3.0
 EMAIL_COOLDOWN_SECONDS = 30.0
 MIN_BOX_AREA = int(LOW_W * LOW_H * 0.02)
-MIN_SHARPNESS = 120.0
-CAPTURE_BURST = 3
-CAPTURE_BURST_DELAY = 0.15
+MIN_SHARPNESS = 30.0
+CAPTURE_BURST = 5
+CAPTURE_BURST_DELAY = 0.12
+MAX_SHARP_WAIT_SECONDS = 1.0
 
 picam2 = Picamera2()
 config = picam2.create_preview_configuration(
@@ -45,6 +46,9 @@ first_detect_time = None
 last_seen_time = None
 last_email_time = 0.0
 last_blur_time = 0.0
+pending_best_frame = None
+pending_best_score = -1.0
+pending_since = None
 
 
 def send_email(image_path):
@@ -142,11 +146,34 @@ while True:
         if ready_to_send and email_armed and not email_sending and cooldown_ok:
             image_path = "/home/admin/person_detected.jpg"
 
+            if pending_since is None:
+                pending_since = detect_time
+
             frame_high, sharpness = capture_best_frame(picam2)
+            if sharpness > pending_best_score:
+                pending_best_frame = frame_high
+                pending_best_score = sharpness
+
             if sharpness >= MIN_SHARPNESS:
                 cv2.imwrite(image_path, cv2.cvtColor(frame_high, cv2.COLOR_RGB2BGR))
                 email_armed = False
                 email_sending = True
+                pending_best_frame = None
+                pending_best_score = -1.0
+                pending_since = None
+
+                threading.Thread(
+                    target=send_email_thread,
+                    args=(image_path,),
+                    daemon=True
+                ).start()
+            elif (detect_time - pending_since) >= MAX_SHARP_WAIT_SECONDS and pending_best_frame is not None:
+                cv2.imwrite(image_path, cv2.cvtColor(pending_best_frame, cv2.COLOR_RGB2BGR))
+                email_armed = False
+                email_sending = True
+                pending_best_frame = None
+                pending_best_score = -1.0
+                pending_since = None
 
                 threading.Thread(
                     target=send_email_thread,
@@ -164,6 +191,9 @@ while True:
         first_detect_time = None
         last_boxes = []
         last_seen_time = None
+        pending_best_frame = None
+        pending_best_score = -1.0
+        pending_since = None
 
     display = frame_small.copy()
 
