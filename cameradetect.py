@@ -15,20 +15,15 @@ model = YOLO("yolov8n.pt")
 LOW_W, LOW_H = 320, 240
 HIGH_W, HIGH_H = 1280, 720
 
-DETECT_CLASSES = [0]
-DETECT_IMGSZ = 256
-DETECT_CONF = 0.45
-DETECT_DEVICE = "cpu"
-
 DETECT_EVERY_N = 3
 STABLE_FRAMES = 4
 STABLE_SECONDS = 2.0
-RESET_AFTER_SECONDS = 1.0
-EMAIL_COOLDOWN_SECONDS = 0.0
+RESET_AFTER_SECONDS = 3.0
+EMAIL_COOLDOWN_SECONDS = 30.0
 MIN_BOX_AREA = int(LOW_W * LOW_H * 0.02)
 MIN_SHARPNESS = 120.0
-CAPTURE_BURST = 5
-CAPTURE_BURST_DELAY = 0.12
+CAPTURE_BURST = 3
+CAPTURE_BURST_DELAY = 0.15
 
 picam2 = Picamera2()
 config = picam2.create_preview_configuration(
@@ -72,45 +67,20 @@ def send_email(image_path):
         smtp.send_message(msg)
 
 
-def detect_people(frame_rgb):
-    results = model(
-        frame_rgb,
-        classes=DETECT_CLASSES,
-        imgsz=DETECT_IMGSZ,
-        conf=DETECT_CONF,
-        device=DETECT_DEVICE,
-        verbose=False
-    )
-
-    boxes = []
-    for box in results[0].boxes:
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        area = max(0, x2 - x1) * max(0, y2 - y1)
-        if area >= MIN_BOX_AREA:
-            boxes.append((x1, y1, x2, y2))
-    return boxes
-
-
 def sharpness_score(frame_rgb):
     gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
     return cv2.Laplacian(gray, cv2.CV_64F).var()
 
 
-def capture_best_frame_with_person(picam):
+def capture_best_frame(picam):
     best_frame = None
     best_score = -1.0
     for i in range(CAPTURE_BURST):
-        request = picam.capture_request()
-        frame_low = request.make_array("lores")
-        frame_high = request.make_array("main")
-        request.release()
-
-        boxes = detect_people(frame_low)
-        if boxes:
-            score = sharpness_score(frame_high)
-            if score > best_score:
-                best_frame = frame_high
-                best_score = score
+        frame = picam.capture_array("main")
+        score = sharpness_score(frame)
+        if score > best_score:
+            best_frame = frame
+            best_score = score
         if CAPTURE_BURST_DELAY > 0 and i < CAPTURE_BURST - 1:
             time.sleep(CAPTURE_BURST_DELAY)
     return best_frame, best_score
@@ -135,11 +105,26 @@ while True:
     frame_count += 1
 
     if frame_count % DETECT_EVERY_N == 0:
+        results = model(
+            frame_small,
+            classes=[0],
+            imgsz=256,
+            conf=0.45,
+            device="cpu",
+            verbose=False
+        )
+
+        last_boxes = []
         detect_time = time.time()
 
-        last_boxes = detect_people(frame_small)
+        for box in results[0].boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            area = max(0, x2 - x1) * max(0, y2 - y1)
+            if area >= MIN_BOX_AREA:
+                last_boxes.append((x1, y1, x2, y2))
 
         if len(last_boxes) > 0:
+            last_seen_time = detect_time
             if first_detect_time is None:
                 first_detect_time = detect_time
             consecutive_detections += 1
@@ -148,23 +133,17 @@ while True:
             first_detect_time = None
 
         stable_time = (detect_time - first_detect_time) if first_detect_time else 0.0
-        stable_present = (
+        ready_to_send = (
             consecutive_detections >= STABLE_FRAMES
             and stable_time >= STABLE_SECONDS
         )
-        if stable_present:
-            last_seen_time = detect_time
-        ready_to_send = stable_present
-        cooldown_ok = (
-            EMAIL_COOLDOWN_SECONDS <= 0.0
-            or (detect_time - last_email_time) >= EMAIL_COOLDOWN_SECONDS
-        )
+        cooldown_ok = (detect_time - last_email_time) >= EMAIL_COOLDOWN_SECONDS
 
         if ready_to_send and email_armed and not email_sending and cooldown_ok:
             image_path = "/home/admin/person_detected.jpg"
 
-            frame_high, sharpness = capture_best_frame_with_person(picam2)
-            if frame_high is not None and sharpness >= MIN_SHARPNESS:
+            frame_high, sharpness = capture_best_frame(picam2)
+            if sharpness >= MIN_SHARPNESS:
                 cv2.imwrite(image_path, cv2.cvtColor(frame_high, cv2.COLOR_RGB2BGR))
                 email_armed = False
                 email_sending = True
