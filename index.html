@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GuardShield AI™ - Hệ thống Giám sát An ninh</title>
+  <link rel="stylesheet" href="style.css?v=3.0">
+</head>
+
+<body>
+
+  <!-- Màn hình Đăng nhập -->
+  <div id="login-view" class="view active">
+    <div class="login-box fade-up">
+      <div class="login-header">
+        <div class="login-logo">
+          <!-- Premium Shield Icon SVG -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-rich)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:48px;height:48px;">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M12 8v4"/>
+            <path d="M12 16h.01"/>
+          </svg>
+        </div>
+        <h2>GUARDSHIELD AI™</h2>
+        <p>Hệ thống Giám sát An ninh Thông minh</p>
+      </div>
+      <div class="form-group">
+        <label>Tên đăng nhập</label>
+        <input type="text" id="username" placeholder="Nhập username" value="admin">
+      </div>
+      <div class="form-group">
+        <label>Mật khẩu</label>
+        <input type="password" id="password" placeholder="Nhập password" value="123456">
+      </div>
+      <button class="btn-primary" onclick="app.login()">KÍCH HOẠT HỆ THỐNG</button>
+      <p style="margin-top: 20px; font-size: 11px; color: var(--text-3);">Copyright 2026 © GuardShield Security AI</p>
+    </div>
+  </div>
+
+  <!-- Bố cục chính của App -->
+  <div id="main-layout" class="view">
+    <div class="ambient ambient-1"></div>
+    <div class="ambient ambient-2"></div>
+
+    <nav class="topnav">
+      <div class="nav-brand">
+        <div class="nav-logo-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <span class="nav-title">GUARDSHIELD <span>AI</span></span>
+      </div>
+      <div class="nav-status">
+        <div class="status-dot" id="system-status-dot"></div>
+        <span id="system-status-text">Hệ thống Armed</span>
+      </div>
+    </nav>
+
+    <!-- TRANG CHỦ / SURVEILLANCE DASHBOARD -->
+    <div id="dashboard" class="page active">
+      <div class="hero fade-up">
+        <div class="hero-eyebrow">🛡️ TRUNG TÂM GIÁM SÁT AN NINH AI</div>
+        <div class="hero-title">Bảng điều khiển<br><em>GuardShield Pro</em></div>
+        <div class="hero-sub">Giám sát camera nhận diện người thời gian thực tích hợp điều khiển thiết bị ngoại vi</div>
+      </div>
+
+      <!-- Live Video Viewfinder Card -->
+      <div class="video-container fade-up delay-1">
+        <div class="video-header">
+          <div class="video-badge">
+            <span class="live-dot"></span>
+            <span id="camera-mode-badge">LIVE AI ACTIVE</span>
+          </div>
+          <div class="video-fps" id="live-fps">AI FPS: 0.0</div>
+        </div>
+        <div class="video-viewfinder">
+          <!-- High-tech crosshairs overlay -->
+          <div class="camera-reticle"></div>
+          <div class="camera-corners"></div>
+          <img id="video-stream" src="/video_feed" alt="Camera Feed" onerror="this.src='https://images.unsplash.com/photo-1557672172-298e090bd0f1?q=80&w=640&auto=format&fit=crop'">
+          
+          <!-- Simulated status text if camera goes offline -->
+          <div class="camera-offline-overlay" id="camera-offline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" style="width:48px;height:48px;margin-bottom:10px;">
+              <line x1="1" y1="1" x2="23" y2="23"/>
+              <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34"/>
+            </svg>
+            <span>MẤT KẾT NỐI CAMERA</span>
+          </div>
+        </div>
+        <div class="video-footer">
+          <span>Độ phân giải: 1280x720 (Auto-Scale)</span>
+          <span id="camera-hw-info">Hardware: Pi Camera</span>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Strip -->
+      <div class="clock-strip fade-up delay-2">
+        <div style="flex:1;">
+          <div class="clock-label">TRẠNG THÁI GIÁM SÁT</div>
+          <div class="clock-time" id="home-arm-status" style="color: var(--green);">SYSTEM SAFE</div>
+        </div>
+        <div class="clock-date" style="text-align: right;">
+          <div class="clock-label">Nhiệt độ CPU Pi 5</div>
+          <div id="home-cpu-temp" style="font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:700;color:var(--text-1)">--.-°C</div>
+        </div>
+      </div>
+
+      <!-- Main Action Controls Section -->
+      <div class="section-header fade-up delay-3">
+        <span class="section-title">Hành động Khẩn cấp</span>
+        <div class="section-line"></div>
+      </div>
+
+      <div class="emergency-actions-grid fade-up delay-3">
+        <button class="btn-emergency btn-panic" onclick="app.triggerPanic()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:24px;height:24px;margin-bottom:6px;">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          BÁO ĐỘNG KHẨN CẤP
+        </button>
+        <button class="btn-emergency btn-arm-toggle" id="btn-master-arm" onclick="app.toggleMasterArm()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:24px;height:24px;margin-bottom:6px;">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>KÍCH HOẠT HỆ THỐNG</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- THIẾT BỊ SMART (SMART DEVICES & ALERTS) -->
+    <div id="devices" class="page">
+      <div class="subpage-header">
+        <div class="back-btn" onclick="app.navigate('dashboard')">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+        </div>
+        <div class="subpage-title">⚙️ Điều khiển Thiết bị & Báo động</div>
+      </div>
+      
+      <div class="subpage-content">
+        <!-- Alarm Modes Section -->
+        <div class="section-header">
+          <span class="section-title">Cấu hình Cảnh báo Tức thời</span>
+          <div class="section-line"></div>
+        </div>
+
+        <div class="card toggle-card">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-title">Cảnh báo qua Email</span>
+              <span class="toggle-desc">Tự động chụp ảnh gửi mail khi phát hiện người</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-email-alerts" onchange="app.toggleAlertMode('email', this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+          <div class="toggle-row" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+            <div class="toggle-info">
+              <span class="toggle-title">Cảnh báo Còi Hú (Buzzer)</span>
+              <span class="toggle-desc">Kích hoạt còi báo động vật lý trên Raspberry Pi 5</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-buzzer-alerts" onchange="app.toggleAlertMode('buzzer', this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 3 External Devices Control -->
+        <div class="section-header">
+          <span class="section-title">Điều khiển 3 thiết bị ngoại vi</span>
+          <div class="section-line"></div>
+        </div>
+
+        <div class="devices-grid">
+          <!-- Device 1 -->
+          <div class="device-card" id="device-card-1">
+            <div class="dev-header">
+              <div class="dev-icon-wrap" style="--dev-color: var(--blue);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round">
+                  <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A5 5 0 0 0 8 8c0 1 .3 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>
+                  <line x1="9" y1="18" x2="15" y2="18"/>
+                  <line x1="10" y1="22" x2="14" y2="22"/>
+                </svg>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="switch-dev-1" onchange="app.controlDevice(1, this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="dev-name" id="label-dev-1">Thiết bị 1</div>
+            <div class="dev-status-text" id="status-dev-1">ĐANG TẮT</div>
+          </div>
+
+          <!-- Device 2 -->
+          <div class="device-card" id="device-card-2">
+            <div class="dev-header">
+              <div class="dev-icon-wrap" style="--dev-color: var(--purple);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2" stroke-linecap="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="switch-dev-2" onchange="app.controlDevice(2, this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="dev-name" id="label-dev-2">Thiết bị 2</div>
+            <div class="dev-status-text" id="status-dev-2">ĐANG TẮT</div>
+          </div>
+
+          <!-- Device 3 -->
+          <div class="device-card" id="device-card-3">
+            <div class="dev-header">
+              <div class="dev-icon-wrap" style="--dev-color: var(--green);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round">
+                  <path d="M2 12h20M12 2v20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93"/>
+                </svg>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="switch-dev-3" onchange="app.controlDevice(3, this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="dev-name" id="label-dev-3">Thiết bị 3</div>
+            <div class="dev-status-text" id="status-dev-3">ĐANG TẮT</div>
+          </div>
+        </div>
+
+        <!-- Buzzer Control Switch -->
+        <div class="card toggle-card" style="margin-top: 15px;">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-title" style="color: var(--red);">Kích hoạt Còi Cảnh báo khẩn cấp</span>
+              <span class="toggle-desc">Nhấp để bật hoặc ngắt còi báo động trực tiếp</span>
+            </div>
+            <label class="switch switch-alarm">
+              <input type="checkbox" id="switch-buzzer" onchange="app.controlDevice('buzzer', this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NHẬT KÝ SỰ KIỆN (EVENT LOGS) -->
+    <div id="logs" class="page">
+      <div class="subpage-header">
+        <div class="back-btn" onclick="app.navigate('dashboard')">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+        </div>
+        <div class="subpage-title">📋 Nhật ký Sự kiện An ninh</div>
+      </div>
+      
+      <div class="subpage-content" style="padding: 15px 15px;">
+        <div class="log-panel-header">
+          <span>NHẬT KÝ SỰ KIỆN CAMERA AI (GẦN NHẤT)</span>
+          <button class="btn-clear-logs" onclick="app.loadLogs()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+            Làm mới
+          </button>
+        </div>
+        
+        <div class="log-list-wrapper" id="event-logs-list">
+          <div class="log-empty-state">Đang tải nhật ký sự kiện...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CÀI ĐẶT HỆ THỐNG -->
+    <div id="settings" class="page">
+      <div class="subpage-header">
+        <div class="back-btn" onclick="app.navigate('dashboard')">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+        </div>
+        <div class="subpage-title">⚙️ Cấu hình Hệ thống & Báo động</div>
+      </div>
+      
+      <div class="subpage-content">
+        <div class="card">
+          <h3 class="card-section-title">📧 CẤU HÌNH GỬI EMAIL CẢNH BÁO</h3>
+          <div class="form-group">
+            <label>Gmail Người gửi (Sender Email)</label>
+            <input type="email" id="sender_email" placeholder="VD: phatduyen17@gmail.com">
+          </div>
+          <div class="form-group">
+            <label>Mật khẩu ứng dụng Gmail (App Password)</label>
+            <input type="password" id="app_password" placeholder="Mật khẩu 16 chữ số được Google cấp">
+          </div>
+          <div class="form-group">
+            <label>Email Người nhận (Receiver Email)</label>
+            <input type="email" id="receiver_email" placeholder="VD: receiver@gmail.com">
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-section-title">🧠 CÀI ĐẶT THÔNG SỐ NHẬN DIỆN AI</h3>
+          <div class="form-group">
+            <label>Độ nhạy YOLO Confidence (0.1 - 1.0)</label>
+            <input type="number" id="confidence" step="0.05" min="0.10" max="1.00">
+            <p style="font-size: 11px; color: var(--text-3); margin-top: 4px;">Ngưỡng tin cậy của thuật toán YOLOv8. Mặc định: 0.45. Càng cao càng ít báo động giả nhưng có thể bỏ sót người.</p>
+          </div>
+          <div class="form-group">
+            <label>Thời gian trễ gửi cảnh báo Email (giây)</label>
+            <input type="number" id="cooldown_seconds" min="5" max="3600">
+            <p style="font-size: 11px; color: var(--text-3); margin-top: 4px;">Thời gian tối thiểu giãn cách giữa hai email gửi đi để tránh spam. Mặc định: 30.0s.</p>
+          </div>
+          <div class="form-group">
+            <label>Thời gian nhận diện người ổn định (giây)</label>
+            <input type="number" id="stable_seconds" min="0.5" max="10" step="0.5">
+            <p style="font-size: 11px; color: var(--text-3); margin-top: 4px;">Người xuất hiện ổn định trong khoảng thời gian này mới kích hoạt báo động. Mặc định: 2.0s.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-section-title">🔧 ĐẶT TÊN CÁC THIẾT BỊ NGOẠI VI</h3>
+          <div class="form-group">
+            <label>Tên Thiết bị 1</label>
+            <input type="text" id="device_1_name" placeholder="VD: Đèn Sân Vườn">
+          </div>
+          <div class="form-group">
+            <label>Tên Thiết bị 2</label>
+            <input type="text" id="device_2_name" placeholder="VD: Khóa Cửa Cổng">
+          </div>
+          <div class="form-group">
+            <label>Tên Thiết bị 3</label>
+            <input type="text" id="device_3_name" placeholder="VD: Quạt Thông Gió">
+          </div>
+        </div>
+
+        <button class="btn-primary" onclick="app.saveSettings()">LƯU CẤU HÌNH LÊN RASPBERRY PI 5</button>
+        
+        <button class="btn-primary" onclick="app.logout()"
+          style="background: var(--red-dim); color: var(--red); margin-top: 15px; box-shadow: none;">ĐĂNG XUẤT HỆ THỐNG</button>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <div class="bnav-item active" data-target="dashboard" onclick="app.navigate('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <span>Trang chủ</span>
+      </div>
+      <div class="bnav-item" data-target="devices" onclick="app.navigate('devices')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+          <line x1="6" y1="6" x2="6.01" y2="6"/>
+          <line x1="6" y1="18" x2="6.01" y2="18"/>
+        </svg>
+        <span>Thiết bị</span>
+      </div>
+      <div class="bnav-item" data-target="logs" onclick="app.navigate('logs')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        <span>Nhật ký</span>
+      </div>
+      <div class="bnav-item" data-target="settings" onclick="app.navigate('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span>Cài đặt</span>
+      </div>
+    </nav>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+</body>
+<script src="app.js?v=3.0"></script>
+
+</html>
