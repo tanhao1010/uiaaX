@@ -190,8 +190,9 @@ class HardwareController:
 hw_controller = HardwareController()
 
 # ----------------- GLOBALS & SHARED VARIABLES -----------------
-current_frame = None            # Annotated camera frame served to Flask
-raw_frame = None                # Unannotated frame for capturing high-res
+raw_frame = None                # Unannotated frame shared for YOLO
+encoded_jpeg_frame = None       # Pre-encoded annotated JPEG byte array
+detected_boxes = []             # Decoupled bounding boxes updated by YOLO
 detection_fps = 0.0
 is_person_detected = False
 email_sending = False
@@ -320,41 +321,30 @@ class CameraDetector:
         except Exception as e:
             print(f"[YOLO] Error loading YOLO model: {e}. Detection will be simulated.")
 
-    def run_detection(self):
-        global current_frame, raw_frame, detection_fps, is_person_detected
+    def run_capture(self):
+        global encoded_jpeg_frame, raw_frame, detected_boxes, is_person_detected, detection_fps
         
         self.init_camera()
-        self.init_model()
-        
         self.running = True
-        prev_time = time.time()
         
-        # Detection logic variables
-        consecutive_detections = 0
-        first_detect_time = None
-        last_seen_time = None
-        last_blur_time = 0.0
-        
-        # Mock simulation variables
         sim_person_x = 50
         sim_person_y = 150
         sim_person_dir = 1
         
-        print("[YOLO THREAD] YOLO AI Detection Thread started.")
+        prev_time = time.time()
+        fps_camera = 0.0
+        
+        print("[CAMERA THREAD] Camera Capture loop started.")
         
         while self.running:
             start_loop = time.time()
             frame_raw = None
-            frame_detect = None
             
             # --- 1. CAPTURE FRAME ---
             if self.mode == "picamera2":
                 try:
                     frame_raw = self.picam2.capture_array("main")
-                    frame_detect = self.picam2.capture_array("lores")
-                    # Convert RGB to BGR for OpenCV
                     frame_raw = cv2.cvtColor(frame_raw, cv2.COLOR_RGB2BGR)
-                    frame_detect = cv2.cvtColor(frame_detect, cv2.COLOR_RGB2BGR)
                 except Exception as e:
                     print(f"[CAMERA] Picamera2 read error: {e}. Switching to Simulation.")
                     self.mode = "simulation"
@@ -364,14 +354,11 @@ class CameraDetector:
                     ret, frame_raw = self.cam.read()
                     if not ret or frame_raw is None:
                         raise Exception("Failed to read webcam frame")
-                    frame_detect = cv2.resize(frame_raw, (320, 240))
                 except Exception as e:
                     print(f"[CAMERA] USB Webcam read error: {e}. Switching to Simulation.")
                     self.mode = "simulation"
                     
             if self.mode == "simulation":
-                # Generate high-tech mock camera feed base
-                # Try to load custom background or create black frame
                 frame_raw = np.zeros((480, 640, 3), dtype="uint8")
                 
                 # Make simulated canvas more complex & interactive
@@ -405,19 +392,16 @@ class CameraDetector:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 242, 254), 1)
                 
                 # Simulate a moving person if System is ARMED or on demand
-                # Let's make the simulated intruder move back and forth
                 sim_person_x += 5 * sim_person_dir
                 if sim_person_x > 450:
                     sim_person_dir = -1
                 elif sim_person_x < 50:
                     sim_person_dir = 1
                 
-                # Only draw "intruder" randomly or if manual trigger, or just run a continuous intrusion demo
                 # Let's run a continuous simulation: intruder appears for 15 seconds, disappears for 15 seconds
                 curr_second = int(time.time()) % 30
                 simulated_intrusion = curr_second < 15
                 
-                # Overwrite simulated intrusion if manual system_armed is false
                 if not system_config["system_armed"]:
                     simulated_intrusion = False
                     
@@ -437,51 +421,17 @@ class CameraDetector:
                     # Simulated overlay lines pointing to target
                     cv2.line(frame_raw, (320, 240), (int((x1+x2)/2), int((y1+y2)/2)), (0, 165, 255), 1)
                 
-                frame_detect = cv2.resize(frame_raw, (320, 240))
+                detected_boxes = mock_boxes
+                is_person_detected = len(mock_boxes) > 0
                 
             raw_frame = frame_raw.copy()
             
-            # --- 2. RUN YOLOv8 PERSON DETECTION ---
-            detected_boxes = []
-            detect_time = time.time()
-            
-            if self.mode != "simulation" and self.model is not None:
-                # Run actual YOLOv8
-                results = self.model(
-                    frame_detect,
-                    classes=[0], # 0 represents Person
-                    imgsz=256,
-                    conf=system_config["confidence"],
-                    device="cpu",
-                    verbose=False
-                )
-                
-                # Scale boxes back to raw_frame size
-                scale_x = frame_raw.shape[1] / frame_detect.shape[1]
-                scale_y = frame_raw.shape[2] / frame_detect.shape[2] if len(frame_detect.shape) > 2 else frame_raw.shape[0] / frame_detect.shape[0]
-                scale_y = frame_raw.shape[0] / frame_detect.shape[0] # Correct height scale
-                
-                for box in results[0].boxes:
-                    bx1, by1, bx2, by2 = map(int, box.xyxy[0])
-                    # Apply scaling
-                    x1 = int(bx1 * scale_x)
-                    y1 = int(by1 * scale_y)
-                    x2 = int(bx2 * scale_x)
-                    y2 = int(by2 * scale_y)
-                    
-                    area = (x2 - x1) * (y2 - y1)
-                    if area >= system_config["min_box_area"]:
-                        detected_boxes.append((x1, y1, x2, y2))
-            elif self.mode == "simulation":
-                # Use the generated mock box
-                detected_boxes = mock_boxes
-                
-            # --- 3. FILTER / STABILIZATION / ARMED TRIGGER LOGIC ---
-            is_person_detected = len(detected_boxes) > 0
-            
-            # Draw detections on high-res preview frame
+            # --- 2. RENDER OVERLAYS & DETECTION BOXES ---
             display_frame = frame_raw.copy()
-            for x1, y1, x2, y2 in detected_boxes:
+            
+            # Use local reference to avoid list-size changes during iteration
+            local_boxes = list(detected_boxes)
+            for x1, y1, x2, y2 in local_boxes:
                 # Draw neon red alarm rectangle
                 cv2.rectangle(display_frame, (x1, y1), (x2, y2), (54, 51, 255), 2)
                 # Draw corner brackets on targets for high-tech aesthetic
@@ -499,7 +449,119 @@ class CameraDetector:
                 cv2.line(display_frame, (x2, y2), (x2 - offset, y2), (0, 242, 254), 2)
                 cv2.line(display_frame, (x2, y2), (x2, y2 - offset), (0, 242, 254), 2)
                 
-            # Apply security arming & trigger alert checks
+            # Write high-tech HUD overlay onto display frame
+            # 1. Arm Status Badge
+            arm_color = (0, 180, 80) if system_config["system_armed"] else (100, 100, 100)
+            arm_text = "SYSTEM ARMED" if system_config["system_armed"] else "SYSTEM DISARMED"
+            cv2.rectangle(display_frame, (20, 420), (220, 455), arm_color, -1)
+            cv2.putText(display_frame, arm_text, (35, 442),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            
+            # 2. Intrusion Alert Badge
+            if is_person_detected and system_config["system_armed"]:
+                cv2.rectangle(display_frame, (420, 420), (620, 455), (54, 51, 255), -1) # Neon red alert badge
+                cv2.putText(display_frame, "INTRUSION DETECTED", (430, 442),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 2)
+            else:
+                cv2.rectangle(display_frame, (420, 420), (620, 455), (30, 30, 30), -1)
+                cv2.putText(display_frame, "SCANNING AREA", (465, 442),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+                
+            # 3. Calculation of FPS
+            now = time.time()
+            fps_camera = 1 / (now - prev_time)
+            prev_time = now
+            
+            # Draw FPS
+            cv2.putText(display_frame, f"STREAM FPS: {fps_camera:.1f}", (20, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 242, 254), 1)
+            cv2.putText(display_frame, f"AI FPS: {detection_fps:.1f}", (20, 70),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 242, 254), 1)
+            cv2.putText(display_frame, f"CAM NODE: {self.mode.upper()}", (20, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 242, 254), 1)
+            
+            # --- 3. JPEG COMPRESSION (ONCE IN BACKGROUND) ---
+            # Using quality=80 significantly reduces image size, maximizing streaming performance and saving CPU
+            ret, buffer = cv2.imencode('.jpg', display_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            if ret:
+                encoded_jpeg_frame = buffer.tobytes()
+            
+            # Control frame rate loop to match butter-smooth 30fps
+            sleep_time = 0.033 - (time.time() - start_loop)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+    def run_inference(self):
+        global raw_frame, detected_boxes, is_person_detected, detection_fps, last_email_time
+        
+        self.init_model()
+        
+        # Optimize PyTorch core threading to utilize 4 threads (max CPU on Pi 5)
+        try:
+            import torch
+            torch.set_num_threads(4)
+            print("[YOLO THREAD] PyTorch successfully configured to use 4 threads.")
+        except Exception as e:
+            print(f"[YOLO THREAD] PyTorch thread optimization skipped: {e}")
+            
+        consecutive_detections = 0
+        first_detect_time = None
+        last_seen_time = None
+        
+        prev_time = time.time()
+        print("[YOLO THREAD] Async YOLO Inference loop started.")
+        
+        while self.running:
+            start_loop = time.time()
+            
+            # In simulation, the mock bounding box is generated at capture level
+            if self.mode == "simulation":
+                time.sleep(0.1)
+                continue
+                
+            if raw_frame is None:
+                time.sleep(0.02)
+                continue
+                
+            # Perform a fast copy of raw frame & resize for AI detection speedup
+            frame_local = raw_frame.copy()
+            frame_detect = cv2.resize(frame_local, (256, 256))
+            
+            detected = []
+            if self.model is not None:
+                try:
+                    results = self.model(
+                        frame_detect,
+                        classes=[0], # Person class
+                        imgsz=256,
+                        conf=system_config["confidence"],
+                        device="cpu",
+                        verbose=False
+                    )
+                    
+                    # Scale boxes back to frame_local dimensions
+                    scale_x = frame_local.shape[1] / 256.0
+                    scale_y = frame_local.shape[0] / 256.0
+                    
+                    for box in results[0].boxes:
+                        bx1, by1, bx2, by2 = map(int, box.xyxy[0])
+                        x1 = int(bx1 * scale_x)
+                        y1 = int(by1 * scale_y)
+                        x2 = int(bx2 * scale_x)
+                        y2 = int(by2 * scale_y)
+                        
+                        area = (x2 - x1) * (y2 - y1)
+                        if area >= system_config["min_box_area"]:
+                            detected.append((x1, y1, x2, y2))
+                except Exception as e:
+                    print(f"[YOLO THREAD] Model inference error: {e}")
+                    
+            # Update global variables atomic values
+            detected_boxes = detected
+            is_person_detected = len(detected) > 0
+            
+            # --- 3. FILTER / STABILIZATION / ARMED TRIGGER LOGIC ---
+            detect_time = time.time()
             if system_config["system_armed"]:
                 if is_person_detected:
                     last_seen_time = detect_time
@@ -532,7 +594,7 @@ class CameraDetector:
                     if system_config["email_alerts_enabled"] and cooldown_ok and not email_sending:
                         # Capture image snapshot to send
                         snapshot_path = os.path.join(BASE_DIR, "guardshield_snapshot.jpg")
-                        cv2.imwrite(snapshot_path, frame_raw)
+                        cv2.imwrite(snapshot_path, frame_local)
                         
                         # Start sending email in a background daemon thread
                         threading.Thread(
@@ -548,39 +610,13 @@ class CameraDetector:
                 consecutive_detections = 0
                 first_detect_time = None
                 
-            # Write high-tech HUD overlay onto display frame
-            # 1. Arm Status Badge
-            arm_color = (0, 180, 80) if system_config["system_armed"] else (100, 100, 100)
-            arm_text = "SYSTEM ARMED" if system_config["system_armed"] else "SYSTEM DISARMED"
-            cv2.rectangle(display_frame, (20, 420), (220, 455), arm_color, -1)
-            cv2.putText(display_frame, arm_text, (35, 442),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            
-            # 2. Intrusion Alert Badge
-            if is_person_detected and system_config["system_armed"]:
-                cv2.rectangle(display_frame, (420, 420), (620, 455), (54, 51, 255), -1) # Neon red alert badge
-                cv2.putText(display_frame, "INTRUSION DETECTED", (430, 442),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 2)
-            else:
-                cv2.rectangle(display_frame, (420, 420), (620, 455), (30, 30, 30), -1)
-                cv2.putText(display_frame, "SCANNING AREA", (465, 442),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
-                
-            # 3. Calculation of FPS
+            # Calculation of FPS
             now = time.time()
             detection_fps = 1 / (now - prev_time)
             prev_time = now
             
-            # Draw FPS
-            cv2.putText(display_frame, f"AI FPS: {detection_fps:.1f}", (20, 70),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 242, 254), 1)
-            cv2.putText(display_frame, f"CAM NODE: {self.mode.upper()}", (20, 90),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 242, 254), 1)
-            
-            current_frame = display_frame
-            
-            # Control frame rate loop to avoid Pi 5 CPU hogging
-            sleep_time = 0.05 - (time.time() - start_loop)
+            # Limit YOLO processing slightly to prevent CPU thermal throttling (target ~8fps)
+            sleep_time = 0.12 - (time.time() - start_loop)
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
@@ -596,7 +632,7 @@ class CameraDetector:
                 self.cam.release()
             except:
                 pass
-        print("[CAMERA] Camera detector thread stopped.")
+        print("[CAMERA] Camera detector threads stopped.")
 
 camera_detector = CameraDetector()
 
@@ -638,15 +674,12 @@ def logo():
 @app.route('/video_feed')
 def video_feed():
     def generate():
-        global current_frame
+        global encoded_jpeg_frame
         while True:
-            if current_frame is not None:
-                ret, buffer = cv2.imencode('.jpg', current_frame)
-                if ret:
-                    frame_bytes = buffer.tobytes()
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-            time.sleep(0.04) # limit to 25 FPS stream
+            if encoded_jpeg_frame is not None:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + encoded_jpeg_frame + b'\r\n')
+            time.sleep(0.033) # limit to 30 FPS stream
             
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
@@ -767,8 +800,8 @@ def api_manual_trigger():
     if system_config["email_alerts_enabled"] and not email_sending:
         # Send instant email using last captured frame
         snapshot_path = os.path.join(BASE_DIR, "guardshield_snapshot.jpg")
-        if current_frame is not None:
-            cv2.imwrite(snapshot_path, current_frame)
+        if raw_frame is not None:
+            cv2.imwrite(snapshot_path, raw_frame)
             
         threading.Thread(
             target=send_email_alert,
@@ -782,9 +815,13 @@ def api_manual_trigger():
 if __name__ == "__main__":
     # Create a clean exit sequence
     try:
-        # Start camera YOLO thread in background
-        detect_thread = threading.Thread(target=camera_detector.run_detection, daemon=True)
-        detect_thread.start()
+        # Start camera acquisition loop in background
+        capture_thread = threading.Thread(target=camera_detector.run_capture, daemon=True)
+        capture_thread.start()
+        
+        # Start YOLO async inference loop in background
+        yolo_thread = threading.Thread(target=camera_detector.run_inference, daemon=True)
+        yolo_thread.start()
         
         # Start Flask Server
         print("[SYSTEM] GuardShield AI Security server launching at http://0.0.0.0:5000")
